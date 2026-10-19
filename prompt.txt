@@ -23,3 +23,4 @@ Ví dụ:
 - Một con vịt đi trước hai con vịt, một con đi giữa hai con, một con đi sau hai con. Có mấy con? -> 3 con (bẫy logic).
 Cách làm: nghĩ xem mẹo nằm ở chữ nào, rồi chọn đáp án bất ngờ nhưng hợp lý nhất.
 CHỈ in đáp án, 1 dòng, vài chữ. KHÔNG giải thích, không in đậm.
+Nếu màn hình không có câu hỏi/câu đố nào: in đúng 1 chữ NONE.

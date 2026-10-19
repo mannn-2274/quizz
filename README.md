@@ -4,8 +4,10 @@ Bấm **F8** (hoặc **F9**) khi đang chơi đố vui trên Slack: Quizz chụp
 
 | Phím | Chế độ | Thời gian |
 |---|---|---|
-| F8 | Nhanh | ~1.5 giây |
-| F9 | Suy luận sâu, cho câu khó | ~3 giây, tối đa 30 giây |
+| F8 | Nhanh | ~2–3 giây |
+| F9 | Suy luận sâu, cho câu khó | ~3–10 giây, tối đa 30 giây |
+
+Lần bấm đầu tiên sau khi mở app chậm hơn (khoảng 5–10 giây), các lần sau nhanh. Câu đố bằng hình khó thì có thể lâu hơn.
 
 - **Chọn câu hỏi:** ưu tiên câu trong khung Thread đang mở. Nếu không mở thread nào thì lấy câu mới nhất ở cuối kênh.
 - **Loại câu hỏi:** giải được câu đố mẹo (chơi chữ, nói lái, đuổi hình bắt chữ) và trả lời đúng sự thật với câu hỏi kiến thức (ví dụ về ngày 20/10).
@@ -33,11 +35,13 @@ Bấm **F8** (hoặc **F9**) khi đang chơi đố vui trên Slack: Quizz chụp
 
 ## Sử dụng
 
-1. Mở **Quizz** từ Desktop, chờ khoảng 10 giây đến khi hiện "Sẵn sàng".
-2. Vào Slack, bấm **F8** khi thấy câu đố. Đáp án hiện trong cửa sổ Quizz và đã nằm sẵn trong clipboard.
+1. Mở **Quizz** từ Desktop.
+   - Máy có nhiều màn hình: mỗi màn hình hiện một số to ở giữa, cửa sổ Quizz liệt kê các màn hình. Gõ số của màn hình có câu đố rồi Enter. Hoặc bấm Enter luôn để Quizz **tự chọn màn hình đang có Slack**.
+   - Chờ khoảng 10 giây đến khi hiện "Sẵn sàng".
+2. Vào Slack, bấm **F8** khi thấy câu đố. Đáp án hiện trong cửa sổ Quizz và đã nằm sẵn trong clipboard. Nếu màn hình không có câu hỏi nào, Quizz chỉ báo trong cửa sổ, không đụng tới clipboard.
 3. Muốn thoát thì đóng cửa sổ Quizz hoặc bấm `Ctrl+C`.
 
-**Máy có nhiều màn hình:** mặc định Quizz đọc màn hình chính. Nếu Slack ở màn hình khác, chuột phải shortcut Quizz → **Properties**, rồi thêm ` -Screen 2` vào cuối ô **Target**.
+**Luôn dùng một màn hình cố định:** để khỏi phải chọn mỗi lần mở, chuột phải shortcut Quizz → **Properties**, thêm ` -Screen 2` (số màn hình của bạn) vào cuối ô **Target**.
 
 **Thêm câu đố của bạn:** mở `data\cau-do-cua-toi.txt`, mỗi dòng ghi theo dạng `câu hỏi => đáp án`, rồi mở lại Quizz.
 

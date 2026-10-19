@@ -1,8 +1,8 @@
 ﻿# Quizz: bấm F8/F9 -> chụp màn hình -> Claude giải câu đố mẹo, in + copy đáp án vào clipboard.
-# F8 = nhanh (opus effort low ~1.5s), F9 = suy luận sâu (opus effort xhigh ~3s, tối đa 30s).
+# F8 = nhanh (opus effort low ~2s), F9 = suy luận sâu (opus effort high, tối đa 30s).
 # Dùng tài khoản Claude Code đã đăng nhập trên máy này (chạy install.ps1 trước).
 param(
-    [int]$Screen = 0,          # màn hình cần đọc: 1, 2... (0 = màn hình chính)
+    [int]$Screen = 0,          # cố định màn hình cần đọc: 1, 2... (0 = tự động: màn hình có Slack / cửa sổ đang dùng)
     [string]$ClaudePath = ''   # để trống = tự tìm claude
 )
 $ErrorActionPreference = 'Stop'
@@ -19,6 +19,33 @@ if (-not $ClaudePath) {
     if ($cmd) { $ClaudePath = $cmd.Source }
     elseif (Test-Path "$env:USERPROFILE\.local\bin\claude.exe") { $ClaudePath = "$env:USERPROFILE\.local\bin\claude.exe" }
     else { Write-Host 'Chưa cài Claude Code. Chạy install.ps1 trước.' -ForegroundColor Red; Read-Host 'Enter để thoát'; exit 1 }
+}
+
+# Máy nhiều màn hình: hiện số to trên từng màn hình rồi cho người dùng chọn (Windows đánh số không theo vị trí)
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+$screens = [System.Windows.Forms.Screen]::AllScreens
+if ($Screen -eq 0 -and $screens.Count -gt 1) {
+    $no = { param($s) $s.DeviceName -replace '^\\\\\.\\DISPLAY', '' }
+    $slack = Get-Process slack -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+    $slackScreen = if ($slack) { [System.Windows.Forms.Screen]::FromHandle($slack.MainWindowHandle).DeviceName }
+    $labels = foreach ($s in $screens) {
+        $f = New-Object Windows.Forms.Form -Property @{
+            FormBorderStyle = 'None'; TopMost = $true; ShowInTaskbar = $false; StartPosition = 'Manual'; BackColor = 'Black'
+            Bounds = New-Object Drawing.Rectangle ($s.Bounds.X + $s.Bounds.Width / 2 - 150), ($s.Bounds.Y + $s.Bounds.Height / 2 - 150), 300, 300 }
+        $f.Controls.Add((New-Object Windows.Forms.Label -Property @{
+            Text = (& $no $s); Dock = 'Fill'; TextAlign = 'MiddleCenter'; ForeColor = 'White'
+            Font = New-Object Drawing.Font('Segoe UI', 140, [Drawing.FontStyle]::Bold) }))
+        $f.Show(); $f
+    }
+    [System.Windows.Forms.Application]::DoEvents()
+    Write-Host 'Các màn hình (số đang hiện to giữa mỗi màn hình):' -ForegroundColor Cyan
+    foreach ($s in $screens) {
+        $tags = @(); if ($s.Primary) { $tags += 'chính' }; if ($s.DeviceName -eq $slackScreen) { $tags += 'đang có Slack' }
+        Write-Host ("  {0}. {1}x{2}  {3}" -f (& $no $s), $s.Bounds.Width, $s.Bounds.Height, ($tags -join ', '))
+    }
+    $answer = Read-Host 'Chọn màn hình có câu đố (Enter = tự động theo Slack)'
+    $labels | ForEach-Object { $_.Close() }
+    if ($answer -match '^\d+$') { $Screen = [int]$answer }
 }
 
 # Dọn rác của lần chạy trước bị tắt đột ngột: phiên claude chạy nền + ảnh/prompt tạm
@@ -151,9 +178,14 @@ public class Mode {
             var sw = Stopwatch.StartNew();
             try {
                 string answer = QuizzApp.Clean(session.Ask(jpeg));
+                if (answer.Trim('.', ' ').Equals("NONE", StringComparison.OrdinalIgnoreCase)) {
+                    // không có câu hỏi thì không đụng tới clipboard (tránh đè thứ người dùng đang copy)
+                    QuizzApp.Say(ConsoleColor.Yellow, "[" + Key + "] không thấy câu hỏi trên màn hình", "");
+                    return;
+                }
                 QuizzApp.Copy(answer);
                 QuizzApp.Say(ConsoleColor.Green, "[" + Key + "] " + answer,
-                    "  (" + sw.Elapsed.TotalSeconds.ToString("0.0") + "s, đã copy)");
+                    "  (" + sw.Elapsed.TotalSeconds.ToString("0.0") + "s, màn hình " + Regex.Match(jpeg, @"-m(\d+)-").Groups[1].Value + ", đã copy)");
             } catch (Exception e) {
                 QuizzApp.Say(ConsoleColor.Red, "[" + Key + "] lỗi: " + e.Message, "  — đang mở phiên mới, bấm lại");
                 session.Turns = QuizzApp.TurnsPerSession;
@@ -175,6 +207,8 @@ public class Mode {
 public class QuizzApp : NativeWindow {
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hWnd, int id, uint mod, uint vk);
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hWnd);
     [DllImport("kernel32.dll")] static extern bool SetConsoleCtrlHandler(CtrlHandler handler, bool add);
     delegate bool CtrlHandler(int ctrlType);
     static CtrlHandler ctrlHandler;  // giữ tham chiếu để GC không thu hồi callback
@@ -182,16 +216,14 @@ public class QuizzApp : NativeWindow {
     public const int TurnsPerSession = 20;
     static readonly object consoleGate = new object();
     readonly Mode[] modes = new Mode[3];  // id phím tắt 1 = F8, 2 = F9
-    Screen screen;
+    Screen fixedScreen;  // null = tự động theo cửa sổ đang dùng
 
     public static void Run(string claude, string prompt, int screenNo, int bankCount) {
         SetProcessDPIAware();  // không bị cắt ảnh khi Windows scale > 100%
         var app = new QuizzApp();
-        app.screen = Screen.PrimaryScreen;
         if (screenNo > 0) {
-            Screen s = Array.Find(Screen.AllScreens, x => x.DeviceName == @"\\.\DISPLAY" + screenNo);
-            if (s != null) app.screen = s;
-            else Say(ConsoleColor.Yellow, "Không thấy màn hình " + screenNo + ", dùng màn hình chính.", "");
+            app.fixedScreen = Array.Find(Screen.AllScreens, x => x.DeviceName == @"\\.\DISPLAY" + screenNo);
+            if (app.fixedScreen == null) Say(ConsoleColor.Yellow, "Không thấy màn hình " + screenNo + ", chuyển sang tự động.", "");
         }
         Say(ConsoleColor.Gray, "Kho đáp án: " + bankCount + " câu. Đang khởi động (~10s)...", "");
 
@@ -214,15 +246,16 @@ public class QuizzApp : NativeWindow {
             app.Cleanup();
             return;
         }
-        Say(ConsoleColor.Cyan, "Sẵn sàng (" + model + "). F8 = nhanh, F9 = suy luận sâu. Đọc màn hình " +
-            app.screen.DeviceName.Replace(@"\\.\DISPLAY", "") + ". Đóng cửa sổ hoặc Ctrl+C để thoát.", "");
+        Say(ConsoleColor.Cyan, "Sẵn sàng (" + model + "). F8 = nhanh, F9 = suy luận sâu. Đọc " +
+            (app.fixedScreen != null ? "màn hình " + ScreenNo(app.fixedScreen) : "màn hình có Slack (tự động)") +
+            ". Đóng cửa sổ hoặc Ctrl+C để thoát.", "");
         Application.Run();
     }
 
     void StartModes(string claude, string model, string prompt) {
         // làm nóng 2 phiên song song cho khởi động nhanh hơn
         Mode fast = null, deep = null; Exception err = null;
-        var t = new Thread(() => { try { deep = new Mode("F9", claude, model, "xhigh", prompt); } catch (Exception e) { err = e; } });
+        var t = new Thread(() => { try { deep = new Mode("F9", claude, model, "high", prompt); } catch (Exception e) { err = e; } });
         t.Start();
         try { fast = new Mode("F8", claude, model, "low", prompt); } catch (Exception e) { err = e; }
         t.Join();
@@ -241,10 +274,24 @@ public class QuizzApp : NativeWindow {
         base.WndProc(ref m);
     }
 
+    // Cửa sổ chính của app Slack (đang mở, không thu nhỏ). Dùng Slack trên trình duyệt thì trả về null.
+    static IntPtr? SlackWindow() {
+        foreach (Process p in Process.GetProcessesByName("slack")) {
+            IntPtr h = p.MainWindowHandle;
+            if (h != IntPtr.Zero && !IsIconic(h)) return h;
+        }
+        return null;
+    }
+
+    static string ScreenNo(Screen s) { return s.DeviceName.Replace(@"\\.\DISPLAY", ""); }
+
     string Capture(string key) {
+        // Tự động: màn hình có cửa sổ Slack; không thấy Slack thì màn hình có cửa sổ đang dùng.
+        // Đúng cho cả laptop + màn hình phụ mà không phải cấu hình gì.
+        Screen screen = fixedScreen ?? Screen.FromHandle(SlackWindow() ?? GetForegroundWindow());
         Rectangle b = screen.Bounds;
         // file riêng mỗi lần bấm; Mode.Handle xoá ngay sau khi gửi đi
-        string path = Path.Combine(Path.GetTempPath(), "quizz-" + key + "-" + DateTime.Now.Ticks + ".jpg");
+        string path = Path.Combine(Path.GetTempPath(), "quizz-" + key + "-m" + ScreenNo(screen) + "-" + DateTime.Now.Ticks + ".jpg");
         using (var full = new Bitmap(b.Width, b.Height)) {
             using (Graphics g = Graphics.FromImage(full)) g.CopyFromScreen(b.Left, b.Top, 0, 0, b.Size);
             int w = Math.Min(960, b.Width), h = b.Height * w / b.Width;  // ảnh nhỏ = gửi + xử lý nhanh hơn, chữ vẫn đọc rõ
