@@ -1,0 +1,4 @@
+# Câu đố tự thêm (đáp án đã xác nhận). Mỗi dòng: câu hỏi => đáp án
+Phụ nữ đi chợ thì mặc gì? => Mặc cả
+Ông già leo lên đỉnh núi thì thấy gì? => Thấy mệt
+Nhìn hình: người bỏ con búp bê có chữ PH, đoán tên món ăn? => Phở bò (bỏ phờ nói lái)
